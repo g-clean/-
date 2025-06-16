@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>等时圈分析</title>
+    
+    <!-- ========================================= -->
+    <!-- 🔑 API密钥配置区域 - 请在此处修改您的高德地图API密钥 -->
+    <!-- ========================================= -->
+    <script>
+        // 高德地图API密钥 - 请替换为您自己的密钥
+        const AMAP_API_KEY = "您的API密钥";
+        
+        // 将API密钥设置为全局变量，供其他脚本使用
+        window.AKEY = AMAP_API_KEY;
+    </script>
+    <!-- ========================================= -->
+    <link rel="stylesheet" href="https://a.amap.com/jsapi_demos/static/demo-center/css/demo-center.css" />
+    <style>
+        html, body, #container {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            margin: 0;
+            padding: 0; /* 移除 body 的 padding，让地图可以占满全屏 */
+            /* 完全移除背景 */
+            min-height: 100vh;
+            /* display: flex; align-items: flex-start; justify-content: center; */ /* 移除 flex 布局，因为地图将全屏，输入卡片将绝对定位 */
+            overflow: hidden; /* 防止地图过大时出现滚动条 */
+        }
+        .input-card {
+            width: 320px; /* 稍微加宽输入卡片 */
+            /* min-height: 400px; */ /* 高度由内容决定 */
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            overflow-y: auto; /* 如果内容过多，允许卡片内部滚动 */
+            position: absolute; /* 设置为绝对定位 */
+            top: 20px; /* 距离顶部20px */
+            left: 20px; /* 距离左侧20px */
+            z-index: 10; /* 确保在地图上层 */
+            max-height: calc(100vh - 40px); /* 最大高度为视口高度减去上下边距 */
+        }
+        .input-card h4 {
+            margin: 0 0 20px 0;
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+            border-bottom: 2px solid #409EFF;
+            padding-bottom: 8px;
+        }
+        .input-card .btn {
+            margin-right: 10px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #409EFF;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        .input-card .btn:hover {
+            background: #337ecc;
+        }
+        .input-item {
+            margin-bottom: 60px; /* 调整项之间的间距 */
+            clear: both;
+        }
+        .input-item label {
+            display: block;
+            margin-bottom: 8px; /* 增加标签和下方控件的间距 */
+            color: #333; /* 标签颜色变深一些 */
+            font-size: 14px;
+            font-weight: bold; /* 标签加粗 */
+        }
+        /* 独立的提示文字样式 */
+        .label-text {
+            display: block;
+            margin-bottom: 18px;
+            color: #333;
+            font-size: 14px;
+            font-weight: 600;
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 4px;
+            border-left: 3px solid #409EFF;
+        }
+        .input-item input, .input-item select, .input-item textarea {
+            width: 100%;
+            padding: 10px; /* 统一内边距 */
+            border: 1px solid #ccc; /* 边框颜色调整 */
+            border-radius: 4px;
+            font-size: 14px;
+            line-height: 1.5;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+            min-height: 40px;
+        }
+        /* 单点输入框特殊样式 - 确保足够宽度 */
+        #lnglat {
+            min-width: 200px; /* 确保至少10个字符宽度 */
+            width: 100% !important;
+        }
+        .input-item input:focus, .input-item select:focus, .input-item textarea:focus {
+            outline: none;
+            border-color: #409EFF;
+            box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+        }
+        /* 确保select下拉选项正常显示 */
+         .input-item select {
+             position: relative;
+             z-index: 2;
+             background: white;
+             appearance: auto;
+             -webkit-appearance: auto;
+             -moz-appearance: auto;
+         }
+         .input-item select:focus {
+             z-index: 3;
+         }
+         /* 输入模式选择样式 */
+          #inputMode {
+              background: #f8f9fa;
+              font-weight: 500;
+              position: relative;
+              z-index: 2;
+          }
+          #inputMode:focus {
+              z-index: 3;
+          }
+          /* 交通方式选择样式 */
+          #transport {
+              position: relative;
+              z-index: 2;
+          }
+          #transport:focus {
+              z-index: 3;
+          }
+        /* 批量输入区域特殊样式 */
+         #batchInput {
+             margin-bottom: 30px !important;
+             padding: 15px;
+             background: #f8f9fa;
+             border-radius: 6px;
+             border: 1px solid #e9ecef;
+             position: relative;
+             z-index: 1;
+         }
+         #batchInput label {
+             color: #495057;
+             font-weight: 600;
+             margin-bottom: 8px;
+         }
+         #batchCoords {
+             font-family: 'Consolas', 'Monaco', monospace;
+             line-height: 1.6; /* 稍微增加行高，改善可读性 */
+             resize: vertical;
+             min-height: 50px; /* 减少最小高度 */
+         }
+         /* 多点选择区域样式 */
+         #multiClickInput {
+             margin-bottom: 30px;
+             padding: 15px;
+             background: #f0f8ff;
+             border-radius: 6px;
+             border: 1px solid #b3d9ff;
+             position: relative;
+             z-index: 1;
+         }
+         #multiClickInput label {
+             color: #0066cc;
+             font-weight: bold; /* 与其他label保持一致 */
+             margin-bottom: 8px;
+         }
+         #multiClickInput p {
+            margin-bottom: 8px; /* 调整多点输入提示文字的间距 */
+            line-height: 1.4;
+         }
+        #clearPoints {
+            background: #6c757d !important;
+            font-size: 12px !important;
+            padding: 4px 12px !important;
+            margin-top: 8px;
+        }
+        #clearPoints:hover {
+            background: #545b62 !important;
+        }
+        /* 模式选择区域样式 */
+         .mode-select {
+             background: #e8f4fd;
+             padding: 15px;
+             border-radius: 6px;
+             border-left: 4px solid #007bff;
+             margin-bottom: 25px;
+             position: relative;
+             z-index: 1;
+         }
+         .mode-select label {
+             color: #004085;
+             font-weight: 600;
+             margin-bottom: 8px;
+         }
+         /* 点击信息样式 */
+          .click-info {
+              margin: 10px 0;
+              font-size: 12px;
+              color: #666;
+              padding: 8px 12px;
+              background: #f8f9fa;
+              border-radius: 4px;
+              border: 1px solid #dee2e6;
+              position: relative;
+              z-index: 1;
+          }
+          /* 通行时间和交通方式区域强调 */
+          .time-input, .transport-input {
+              background: #fff9e6;
+              padding: 15px;
+              border-radius: 6px;
+              border-left: 4px solid #ffc107;
+              margin-bottom: 25px;
+              position: relative;
+              z-index: 1;
+          }
+          .time-input label, .transport-input label {
+              color: #856404;
+              font-weight: 600;
+              margin-bottom: 8px;
+          }
+        /* 进度显示区域样式 */
+        #progressArea {
+            background: #e8f5e8;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #c3e6c3;
+            margin-top: 15px;
+        }
+        #progressText {
+            font-weight: 600;
+            color: #155724;
+        }
+        /* 按钮区域样式 */
+        .button-area {
+            display: flex; /* 使用flex布局让按钮并排 */
+            justify-content: flex-end; /* 按钮组右对齐 */
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+        .button-area button { /* 直接选择button元素 */
+            margin-left: 10px; /* 按钮之间的左边距 */
+            padding: 10px 18px; /* 增大按钮内边距 */
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff; /* 主按钮颜色 */
+            color: white;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s;
+        }
+        .button-area button:hover {
+            background-color: #0056b3;
+        }
+        .button-area button#clearBtn { /* 清除按钮特定样式 */
+            background-color: #6c757d;
+        }
+        .button-area button#clearBtn:hover {
+            background-color: #545b62;
+        }
+        .input-item:last-child {
+            text-align: center;
+            margin-top: 25px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        #clear {
+            background: #6c757d !important;
+        }
+        #clear:hover {
+            background: #545b62 !important;
+        }
+        /* 地图容器样式 */
+        #container {
+            width: 100vw; /* 视口宽度 */
+            height: 100vh; /* 视口高度 */
+            position: absolute; /* 绝对定位 */
+            top: 0;
+            left: 0;
+            z-index: 0; /* 在输入卡片下层 */
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    <div class="input-card">
+            <h2>等时圈参数设置</h2>
+            <!-- 模式选择 -->
+            <div class="input-item">
+                <label for="inputMode">输入模式:</label>
+                <select id="inputMode">
+                    <option value="single">单点输入</option>
+                    <option value="multiClick">多点地图选择</option>
+                    <option value="multiBatch">批量坐标输入</option>
+                </select>
+            </div>
+
+          <!-- 单点输入 -->
+            <div id="singleInput" class="input-item" style="margin-bottom: 60px;">
+                <label for="lnglat">坐标 (经度,纬度):</label>
+                <input type="text" id="lnglat" placeholder="例如: 116.397428,39.90923">
+            </div>
+
+            <!-- 多点地图选择 -->
+            <div id="multiClickInput" class="input-item" style="margin-bottom: 60px;">
+                <p>请在地图上点击选择设施点，最多可选10个点。</p>
+                <p>已选点数: <span id="clickCount">0</span>/10</p>
+                <button id="clearSelectedPointsBtn">清除选择</button>
+            </div>
+
+            <!-- 批量坐标输入 -->
+            <div id="batchInput" class="input-item" style="margin-bottom: 60px;">
+                <label for="batchCoords">批量坐标 (每行一对,逗号分隔):</label>
+                <textarea id="batchCoords" rows="3" placeholder="例如:
+116.397428,39.90923
+116.403428,39.90923
+116.407428,39.91923"></textarea>
+            </div>
+
+            <!-- 时间设置 -->
+            <div class="input-item" style="margin-top: 70px;">
+                <label for="time">时间 (分钟):</label>
+                <input type="number" id="time" value="30" min="1" max="120">
+            </div>
+
+            <!-- 交通方式 -->
+            <div class="input-item" style="margin-top: 20px;">
+                <label for="transport">交通方式:</label>
+                <select id="transport">
+                    <option value="driving">驾车</option>
+                    <option value="walking">步行</option>
+                    <option value="riding">骑行</option>
+                    <option value="bus">公交</option> 
+                </select>
+            </div>
+
+            <!-- 按钮区域 -->
+            <div class="button-area" style="margin-top: 20px;">
+                <button id="generateBtn">计算等时圈</button>
+                <button id="clearBtn">清除结果</button>
+            </div>
+
+            <!-- 进度显示 -->
+            <div id="progressArea" style="display: none; margin-top: 10px;">
+                <p id="progressText">0/0</p>
+                <div style="background-color: #e0e0e0; border-radius: 5px;">
+                    <div id="progressBar" style="width: 0%; height: 10px; background-color: #4CAF50; border-radius: 5px;"></div>
+                </div>
+            </div>
+        </div>
+
+    <!-- 高德地图API脚本 - 使用顶部配置的密钥 -->
+    <script>
+        // 动态构建高德地图API URL
+        const amapScriptUrl = `https://webapi.amap.com/maps?v=2.0&key=${AMAP_API_KEY}&securityJsCode=${AMAP_SECURITY_JS_CODE}`;
+        document.write(`<script src="${amapScriptUrl}"><\/script>`);
+    </script>
+    <script src="js/isochrone.js"></script>
+    <script>
+        // 创建地图实例
+        // 创建Canvas元素并设置willReadFrequently属性
+        const container = document.getElementById('container');
+        const canvas = document.createElement('canvas');
+        canvas.setAttribute('willReadFrequently', 'true');
+        container.appendChild(canvas);
+
+        // 创建地图实例
+        const map = new AMap.Map('container', {
+            zoom: 12,
+            center: [118.11022, 24.49047], // 默认中心点：厦门市
+            viewMode: '2D'
+        });
+
+        // 创建等时圈管理器实例
+        const isochroneManager = new IsochroneManager(map);
+        
+        // 批量输入相关变量
+        let selectedPoints = []; // 存储多点选择的坐标
+        let currentInputMode = 'single'; // 当前输入模式
+        
+        // 输入模式切换
+        const inputModeSelect = document.getElementById('inputMode');
+        const singleInput = document.getElementById('singleInput');
+        const multiClickInput = document.getElementById('multiClickInput');
+        const batchInput = document.getElementById('batchInput');
+        // currentInputMode is already declared globally and initialized to 'single'.
+
+        function switchInputMode(mode) {
+            currentInputMode = mode; // Assigns to the global currentInputMode
+            // 先隐藏所有特定模式的输入区域
+            singleInput.style.display = 'none';
+            multiClickInput.style.display = 'none';
+            batchInput.style.display = 'none';
+
+            // 重置边距
+            singleInput.style.marginTop = '0';
+            multiClickInput.style.marginTop = '0';
+            batchInput.style.marginTop = '0';
+
+            // 根据选择的模式显示对应的输入区域
+            if (mode === 'single') {
+                singleInput.style.display = 'block';
+            } else if (mode === 'multiClick') {
+                multiClickInput.style.display = 'block';
+                // multiClickInput.style.marginTop = '5em'; // 根据之前的需求，如果需要下移，在此处取消注释
+            } else if (mode === 'multiBatch') {
+                batchInput.style.display = 'block';
+                // batchInput.style.marginTop = '5em'; // 根据之前的需求，如果需要下移，在此处取消注释
+            }
+        }
+
+        inputModeSelect.addEventListener('change', function() {
+            switchInputMode(this.value);
+        });
+        // 初始化时调用一次以设置默认模式的显示
+        switchInputMode(currentInputMode); // Uses the global currentInputMode
+        
+         // 清除选择的点
+        const clearSelectedPointsBtn = document.getElementById('clearSelectedPointsBtn');
+        function clearSelectedPoints() {
+            selectedPoints = [];
+            isochroneManager.clearAllIsochrones(); // 清除所有标记和等时圈
+            updateClickCount();
+        }
+        if(clearSelectedPointsBtn) clearSelectedPointsBtn.addEventListener('click', clearSelectedPoints);
+
+        // 更新点击计数
+        const clickCountSpan = document.getElementById('clickCount');
+        function updateClickCount() {
+            if(clickCountSpan) clickCountSpan.textContent = selectedPoints.length;
+        }
+
+        // 地图点击事件
+        map.on('click', function(e) {
+            const lng = e.lnglat.getLng().toFixed(6); // 保留6位小数
+            const lat = e.lnglat.getLat().toFixed(6); // 保留6位小数
+
+            if (currentInputMode === 'single') {
+                // 如果是单点输入模式，则将点击的坐标填充到输入框
+                const lnglatInput = document.getElementById('lnglat');
+                if (lnglatInput) {
+                    lnglatInput.value = `${lng},${lat}`;
+                }
+            } else if (currentInputMode === 'multiClick') {
+                // 如果是多点地图选择模式
+                if (selectedPoints.length < 10) {
+                    const point = [parseFloat(lng), parseFloat(lat)];
+                    selectedPoints.push(point);
+                    isochroneManager.addFacilityMarker(point); // 在地图上添加标记
+                    updateClickCount(); // 更新已选点数显示
+                } else {
+                    alert('最多只能选择10个点');
+                }
+            }
+            // 批量坐标输入模式下，地图点击不执行任何操作
+        });
+
+
+        // 生成等时圈按钮点击事件
+        const generateBtn = document.getElementById('generateBtn'); // 在监听器外部获取按钮元素
+
+        const clearBtn = document.getElementById('clearBtn'); // 在监听器外部获取按钮元素
+
+        generateBtn.addEventListener('click', async () => {
+            const timeInput = document.getElementById('time');
+            const transportSelect = document.getElementById('transport');
+            const lnglatInput = document.getElementById('lnglat');
+            const batchCoordsTextarea = document.getElementById('batchCoords');
+            
+            const time = parseInt(timeInput.value);
+            const transport = transportSelect.value;
+            
+            // 验证通行时间
+            if (isNaN(time) || time < 1 || time > 120) {
+                alert('请输入1-120分钟之间的通行时间');
+                return;
+            }
+            
+            let facilityPoints = [];
+            
+            if (currentInputMode === 'single') {
+                const lnglatStr = lnglatInput.value.split(',');
+                if (lnglatStr.length !== 2 || isNaN(parseFloat(lnglatStr[0])) || isNaN(parseFloat(lnglatStr[1]))) {
+                    alert('请输入有效的坐标，格式为：经度,纬度');
+                    return;
+                }
+                facilityPoints.push([parseFloat(lnglatStr[0]), parseFloat(lnglatStr[1])]);
+            } else if (currentInputMode === 'multiClick') {
+                if (selectedPoints.length === 0) {
+                    alert('请在地图上选择至少一个设施点');
+                    return;
+                }
+                facilityPoints = [...selectedPoints];
+            } else if (currentInputMode === 'multiBatch') {
+                const batchText = batchCoordsTextarea.value.trim();
+                if (!batchText) {
+                    alert('请输入批量坐标');
+                    return;
+                }
+                const lines = batchText.split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (line) {
+                        const coords = line.split(',');
+                        if (coords.length !== 2 || isNaN(parseFloat(coords[0])) || isNaN(parseFloat(coords[1]))) {
+                            alert(`第${i + 1}行坐标格式错误：${line}`);
+                            return;
+                        }
+                        facilityPoints.push([parseFloat(coords[0]), parseFloat(coords[1])]);
+                    }
+                }
+                if (facilityPoints.length === 0) {
+                    alert('请输入有效的坐标');
+                    return;
+                }
+            }
+            
+            // 所有验证通过后，禁用按钮并开始计算
+            const originalText = generateBtn.textContent; // 使用外部已获取的 generateBtn
+            generateBtn.disabled = true; // 禁用计算按钮
+            clearBtn.disabled = true; // 禁用清除按钮
+            generateBtn.textContent = '计算中...';
+            
+            showProgress(0, facilityPoints.length); // 初始化进度
+            
+            // 使用顶部配置区域定义的全局常量 AKEY
+            const apiKey = window.AKEY; 
+
+            if (!apiKey) { // 检查API密钥是否正确配置
+                alert('API Key 未定义，请检查顶部配置区域的密钥设置');
+                generateBtn.disabled = false; // 重新启用计算按钮
+                clearBtn.disabled = false; // 重新启用清除按钮
+                generateBtn.textContent = originalText; // 恢复按钮文本
+                const progressAreaElement = document.getElementById('progressArea');
+                if (progressAreaElement) progressAreaElement.style.display = 'none'; // 隐藏进度条
+                return;
+            }
+
+            try {
+                await isochroneManager.generateIsochrones(facilityPoints, time, transport, apiKey, (index, total) => { showProgress(index, total); }); // 调用isochroneManager生成等时圈，并传入进度回调
+            } catch (error) {
+                console.error('生成等时圈时发生错误:', error);
+                // 直接显示原始错误信息
+                alert('生成等时圈失败: ' + (error.message || error.toString() || error));
+            } finally {
+                try {
+                    // 隐藏进度条
+                    const progressAreaElement = document.getElementById('progressArea');
+                    if (progressAreaElement) {
+                        progressAreaElement.style.display = 'none';
+                        console.log('进度条已隐藏');
+                    }
+                    
+                    // 启用计算按钮
+                    if (generateBtn) {
+                        generateBtn.disabled = false;
+                        console.log('计算按钮已启用');
+                    }
+        
+                    // 启用清除按钮
+                    if (clearBtn) {
+                        clearBtn.disabled = false;
+                        console.log('清除按钮已启用');
+                    }
+                    
+                    // 恢复按钮文本
+                    if (generateBtn) {
+                        generateBtn.textContent = originalText;
+                        console.log('按钮文本已恢复为:', originalText);
+                    }
+                } catch (finallyError) {
+                    console.error('finally块执行出错:', finallyError);
+                    // 强制恢复按钮状态
+                    if (generateBtn) {
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = originalText; // 确保按钮文本也被恢复
+                    }
+                    if (clearBtn) clearBtn.disabled = false;
+                }
+            }
+        });
+
+
+
+        // 清除结果按钮点击事件
+        // clearBtn 已在外部获取，此处直接使用
+        clearBtn.addEventListener('click', () => {
+            isochroneManager.clearAllIsochrones(); // 清除所有等时圈和标记
+            if(document.getElementById('lnglat')) document.getElementById('lnglat').value = '';
+            if(document.getElementById('batchCoords')) document.getElementById('batchCoords').value = '';
+            clearSelectedPoints(); // 清除地图上的点和计数
+            hideProgress();
+        });
+
+        // 显示进度函数
+        // 显示进度函数
+        function showProgress(current, total) {
+            const progressAreaElement = document.getElementById('progressArea');
+            const progressTextElement = document.getElementById('progressText');
+            const progressBarElement = document.getElementById('progressBar');
+            if(progressAreaElement) progressAreaElement.style.display = 'block';
+            if(progressTextElement) progressTextElement.textContent = `${current}/${total}`;
+            if(progressBarElement) progressBarElement.style.width = total > 0 ? `${(current / total) * 100}%` : '0%';
+        }
+
+        // 隐藏进度函数
+        function hideProgress() {
+            const progressAreaElement = document.getElementById('progressArea');
+            if(progressAreaElement) setTimeout(() => { progressAreaElement.style.display = 'none'; }, 1000);
+        }
+    </script>
+</body>
+</html>
